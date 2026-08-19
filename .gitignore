@@ -1,0 +1,13 @@
+# Secrets & runtime data — never commit
+.env
+data/tokens.json
+data/transcripts/
+logs/*.jsonl
+
+# Internal spec & design docs (kept out of the shared repo)
+CLAUDE.md
+zoom-my-notes-gcs-integration-guide.md
+
+# Dependencies & OS cruft
+node_modules/
+.DS_Store

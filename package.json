@@ -1,0 +1,18 @@
+{
+  "name": "mynotetranscriptarchiver-ts2384395",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "PoC: archive Zoom My Notes transcripts locally via WebSocket subscription",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
