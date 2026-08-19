@@ -1,12 +1,15 @@
 # Zoom My Notes → Local Transcript Archiver (PoC)
 
+**English** | [日本語版 (Japanese)](./README.ja.md)
+
 Subscribe to Zoom **My Notes** events over a **WebSocket** connection, and when a
 note's transcript becomes ready, fetch it with the note owner's OAuth token and
 save it to disk as JSON.
 
-This is a proof-of-concept. It stores everything locally (no cloud), keeps
-verbose logs, and deliberately leaves production concerns (allowlist filtering,
-refresh-token keep-alive, encryption, cloud storage) out of scope.
+This is a proof-of-concept. It stores everything locally (no cloud) and keeps
+verbose logs. The local loopback + PKCE onboarding here is a **testing
+convenience** — a real deployment needs server-side OAuth and an allowlist. See
+[From PoC to production](#from-poc-to-production).
 
 ---
 
@@ -211,9 +214,51 @@ A stored transcript looks like:
   only their lengths are recorded. Raw Zoom event data, however, is logged in
   full for observability.
 
-## Out of scope (intentionally)
+---
 
-Allowlist filtering, periodic refresh-token keep-alive, cloud (GCS) storage, and
-credential encryption are production concerns and are **not** implemented here.
-If a stored refresh token expires from inactivity, re-onboard that user via
-`/connect`.
+## Token handling (refresh-token rotation)
+
+Zoom **rotates the refresh token on every use**: each refresh call returns a
+brand-new refresh token and immediately invalidates the previous one. Losing the
+new value means the user can no longer be refreshed and must re-onboard, so the
+app treats persistence as critical:
+
+- The rotated `refresh_token` is written to `data/tokens.json` **atomically**
+  (temp file → `rename`) and the refresh is not considered complete until that
+  write succeeds.
+- Refreshes for the same user are **serialized**, so two concurrent events can't
+  each rotate the token and invalidate the other's result.
+- A `400 invalid_grant` marks the user `needs_reonboarding` and is logged; the
+  fix is to run `/connect` again for that user.
+
+> **Not implemented (PoC):** a *keep-alive* that periodically refreshes idle
+> tokens. Zoom expires a refresh token that goes unused for too long, so in a
+> long-lived deployment you must refresh on a schedule. For this short-lived PoC,
+> if a token expires from inactivity, just re-onboard the user.
+
+---
+
+## From PoC to production
+
+The onboarding flow here uses a **public client (PKCE) with a loopback redirect
+(`127.0.0.1`)**. That is ideal for a local PoC — no secret to manage and no
+public endpoint required — but it is **only a testing convenience** and is
+**not** how a deployed service should authenticate users. A production build
+differs on several points:
+
+- **Server-side OAuth with a confidential client.** Register App B as a
+  confidential client (**Client ID + Client Secret**) and use a **server-hosted
+  HTTPS redirect URL** (e.g. `https://your-service.example.com/callback`) instead
+  of `http://127.0.0.1/callback`. The authorization-code exchange then runs on
+  your server with Basic auth (`client_id:client_secret`), keeping the secret off
+  end-user devices. Loopback/PKCE is for native/local apps; a hosted service
+  should not rely on it.
+- **Allowlist filtering.** Maintain an approved list of target users (e.g. a
+  CSV/spreadsheet of coordinator emails). On each event, archive the transcript
+  **only if `payload.operator` is on the list**, and drop everything else. This
+  PoC intentionally skips the allowlist and archives every onboarded user.
+- **Refresh-token keep-alive.** Refresh idle tokens on a schedule so they don't
+  expire (see the section above).
+- **Durable, secured storage.** Replace local disk with cloud object storage
+  (e.g. GCS) and encrypt the stored refresh tokens at rest rather than keeping
+  them in plaintext under `data/`.
